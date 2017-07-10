@@ -1,5 +1,6 @@
 import argparse
 import re
+import os
 import urllib.request
 
 class Rajce:
@@ -25,10 +26,24 @@ class Rajce:
 
 	def download_album(self, albumUrl):
 		html = urllib.request.urlopen(albumUrl).read().decode('utf-8')
-		m = re.findall('{ (photoID: \".*)}', html)
-		if not m:
+
+		storage = re.findall('var storage = "(.*)";', html)[0]
+
+		links = re.findall('{ (photoID: \".*)}', html)
+		if not links:
 			print('No photo found.')
 			return
+
+		m = re.search('(\w*)\.rajce.idnes.cz/(\w*)', albumUrl)
+		filePath = os.path.join(m.group(1), m.group(2))
+		os.makedirs(filePath, exist_ok=True)
+
+		for link in links:
+			fileName = re.search('fileName: \"(.*)\",', link).group(1)
+			try:
+				urllib.request.urlretrieve(storage + 'images/' + fileName, os.path.join(filePath, fileName))
+			except ValueError:
+				print("Can't receive file.")
 
 
 if __name__ == '__main__':
