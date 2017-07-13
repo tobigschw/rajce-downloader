@@ -4,6 +4,7 @@ import os
 import urllib.request
 import xml.etree.ElementTree as ET
 import time
+from multiprocessing.dummy import Pool
 
 class Rajce:
 
@@ -11,6 +12,10 @@ class Rajce:
 	path = None
 	videoStorage = None
 	securityCode = None
+	storage = None
+	filePath = None
+
+	THREADS = 15
 
 	def __init__(self, urls, path=None):
 		self.urls = urls
@@ -19,7 +24,7 @@ class Rajce:
 	def download(self):
 		for url in self.urls:
 			url = self.validate_url(url)
-			m = re.search('([\w-]+?)\.rajce\.idnes\.cz/(.*)\/', url)
+			m = re.search('([\w-]+?)\.rajce\.idnes\.cz/((.*)|)', url)
 			if not m:
 				print('Wrong url!')
 			elif m.group(2) == '':
@@ -55,7 +60,12 @@ class Rajce:
 	def download_album(self, albumUrl):
 		html = urllib.request.urlopen(albumUrl).read().decode('utf-8')
 
-		storage = re.search('var storage = "(.*)";', html).group(1)
+		storage = re.search('var storage = "(.*)";', html)
+		if not storage:
+			print('No photo found or locked album.')
+			return
+
+		self.storage = storage.group(1)
 		self.securityCode = re.search('var albumSecurityCode = \"(.*)\";', html).group(1)
 
 		links = re.findall('{ (photoID: \".*)}', html)
@@ -64,22 +74,31 @@ class Rajce:
 			return
 
 		m = re.search('([\w-]+?)\.rajce\.idnes\.cz/(.*?)/', albumUrl)
-		filePath = os.path.join(m.group(1), m.group(2).replace('.','_'))
-		os.makedirs(filePath, exist_ok=True)
+		self.filePath = os.path.join(m.group(1), m.group(2).replace('.','_'))
+		os.makedirs(self.filePath, exist_ok=True)
 
-		for link in links:
-			if re.search('isVideo: (.*), desc', link).group(1) == 'false':
-				fileName = re.search('fileName: \"(.+?)\"', link).group(1)
-				fileUrl = storage + 'images/' + fileName
-			else:
-				fileName = re.search('info: \"(.+?\..+?)[\s\"]', link).group(1)
-				photoID = re.search('photoID: \"(\d{10})', link).group(1)
-				fileUrl = self.get_video_storage(photoID) + photoID
+		pool = Pool(self.THREADS)
+		pool.map(self.download_file, links)
+		pool.close()
+		pool.join()
 
-			try:
-				urllib.request.urlretrieve(fileUrl, os.path.join(filePath, fileName))
-			except ValueError:
-				print("Can't receive file.")
+		# for link in links:
+		# 	self.download_file(link)
+
+	def download_file(self, fileUrl):
+		if re.search('isVideo: (.*), desc', fileUrl).group(1) == 'false':
+			fileName = re.search('fileName: \"(.+?)\"', fileUrl).group(1)
+			fileUrl = self.storage + 'images/' + fileName
+		else:
+			fileName = re.search('info: \"(.+?\..+?)[\s\"]', fileUrl).group(1)
+			photoID = re.search('photoID: \"(\d{10})', fileUrl).group(1)
+			fileUrl = self.get_video_storage(photoID) + photoID
+
+		try:
+			print(fileUrl)
+			urllib.request.urlretrieve(fileUrl, os.path.join(self.filePath, fileName))
+		except ValueError:
+			print("Can't receive file.")
 
 	def get_video_storage(self, photoId):
 		if self.videoStorage:
@@ -107,9 +126,10 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-u', '--url', nargs='+', help="display a square of a given number")
 	parser.add_argument('-p', '--path', help="display a square of a given number")
-	args = parser.parse_args('-u https://pytlak-mvc.rajce.idnes.cz/2017-07-06%2C_Mikulov%2C_MCR_a_Velka_cena_WI-CZ_Pytlak/'.split())
+	# args = parser.parse_args('-u https://pytlak-mvc.rajce.idnes.cz/2017-07-06%2C_Mikulov%2C_MCR_a_Velka_cena_WI-CZ_Pytlak/'.split())
 	# args = parser.parse_args('-u http://vsevily.rajce.idnes.cz/'.split())
-	# args = parser.parse_args('-u http://dolfik88.rajce.idnes.cz/'.split())
+	args = parser.parse_args('-u http://dolfik88.rajce.idnes.cz/'.split())
+	# args = parser.parse_args('-u https://sweethotsandy.rajce.idnes.cz/'.split())
 
 	start = time.time()
 	downloader = Rajce(args.url, args.path)
