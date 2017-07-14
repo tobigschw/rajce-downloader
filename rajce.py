@@ -6,8 +6,8 @@ import xml.etree.ElementTree as ET
 import time
 from multiprocessing.dummy import Pool
 
-class Rajce:
 
+class Rajce:
 	urls = None
 	path = None
 	videoStorage = None
@@ -15,7 +15,7 @@ class Rajce:
 	storage = None
 	filePath = None
 
-	THREADS = 15
+	THREADS_COUNT = 15
 
 	def __init__(self, urls, path=None):
 		self.urls = urls
@@ -74,16 +74,13 @@ class Rajce:
 			return
 
 		m = re.search('([\w-]+?)\.rajce\.idnes\.cz/(.*?)/', albumUrl)
-		self.filePath = os.path.join(m.group(1), m.group(2).replace('.','_'))
+		self.filePath = os.path.join(self.path if self.path else '', m.group(1), m.group(2).replace('.', '_'))
 		os.makedirs(self.filePath, exist_ok=True)
 
-		pool = Pool(self.THREADS)
+		pool = Pool(self.THREADS_COUNT)
 		pool.map(self.download_file, links)
 		pool.close()
 		pool.join()
-
-		# for link in links:
-		# 	self.download_file(link)
 
 	def download_file(self, fileUrl):
 		if re.search('isVideo: (.*), desc', fileUrl).group(1) == 'false':
@@ -95,10 +92,9 @@ class Rajce:
 			fileUrl = self.get_video_storage(photoID) + photoID
 
 		try:
-			print(fileUrl)
 			urllib.request.urlretrieve(fileUrl, os.path.join(self.filePath, fileName))
 		except ValueError:
-			print("Can't receive file.")
+			print("Can't receive file " + "'" + fileUrl + "'")
 
 	def get_video_storage(self, photoId):
 		if self.videoStorage:
@@ -124,12 +120,10 @@ class Rajce:
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
-	parser.add_argument('-u', '--url', nargs='+', help="display a square of a given number")
-	parser.add_argument('-p', '--path', help="display a square of a given number")
-	# args = parser.parse_args('-u https://pytlak-mvc.rajce.idnes.cz/2017-07-06%2C_Mikulov%2C_MCR_a_Velka_cena_WI-CZ_Pytlak/'.split())
-	# args = parser.parse_args('-u http://vsevily.rajce.idnes.cz/'.split())
-	args = parser.parse_args('-u http://dolfik88.rajce.idnes.cz/'.split())
-	# args = parser.parse_args('-u https://sweethotsandy.rajce.idnes.cz/'.split())
+	parser.add_argument('-u', '--url', help="List of URLs", nargs='+', required = True)
+	parser.add_argument('-p', '--path', help="Destination folder")
+	args = parser.parse_args()
+	# args = parser.parse_args('-u http://dolfik88.rajce.idnes.cz/ -p E:/Downloads/Rajce'.split())
 
 	start = time.time()
 	downloader = Rajce(args.url, args.path)
