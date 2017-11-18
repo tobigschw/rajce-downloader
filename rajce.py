@@ -124,3 +124,4 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--path', help="Destination folder")
     args = parser.parse_args()
     downloader = Rajce(args.url, args.path)
+    downloader.download()
