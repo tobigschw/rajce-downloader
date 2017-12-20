@@ -27,7 +27,7 @@ class Rajce:
             url = self.correct_url(url)
             m = re.search('([\w-]+?)\.rajce\.idnes\.cz/((.*)|)', url)
             if not m:
-                print('Wrong url!')
+                print(url + ' - Wrong url!')
             elif m.group(2) == '':
                 self.download_gallery(url)
             else:
@@ -45,11 +45,10 @@ class Rajce:
             regex = '(' + user + '\.rajce\.idnes\.cz/.*?/)\">'
             albums = re.findall(regex, html)
             if not albums:
-                print('No albums found.')
+                print(galleryUrl + ' - No albums found!')
                 return
 
             for album in albums:
-                print(album)
                 self.download_album(self.correct_url(album))
 
             if page > 0:
@@ -63,7 +62,7 @@ class Rajce:
 
         storage = re.search('var storage = "(.*)";', html)
         if not storage:
-            print('No photo found or locked album.')
+            print(albumUrl + ' - No photo found or locked album!')
             return
 
         self.videoStorage = None
@@ -72,7 +71,7 @@ class Rajce:
 
         links = re.findall('{(\"photoID\".*?)}', html)
         if not links:
-            print('No photo found.')
+            print(albumUrl + ' - No photo found!')
             return
 
         m = re.search('([\w-]+?)\.rajce\.idnes\.cz/(.*?)/', albumUrl)
@@ -83,6 +82,8 @@ class Rajce:
         pool.map(self.download_file, links)
         pool.close()
         pool.join()
+
+        print(albumUrl + ' - OK!')
 
     def download_file(self, fileUrl):
         if re.search('\"isVideo\":(.*),\"desc', fileUrl).group(1) == 'false':
