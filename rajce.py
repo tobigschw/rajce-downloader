@@ -3,6 +3,7 @@ import re
 import os
 import urllib.request
 import urllib.error
+import urllib.parse
 import xml.etree.ElementTree as ET
 import time
 from multiprocessing.dummy import Pool
@@ -36,7 +37,8 @@ class Rajce:
     def download_gallery(self, galleryUrl):
         html = urllib.request.urlopen(galleryUrl).read().decode('utf-8')
 
-        pageList = [int(x) for x in re.findall('sort=createDate.+?page=(\d+)', html)]
+        pageList = [int(x) for x in re.findall('sort=\w+?&page=(\d+)', html)]
+        sortType = re.search('sort=(\w+?)&page=\d+', html).group(1)
         page = int(max(pageList)) if pageList else 0
 
         user = re.search('([\w-]+?)\.rajce\.idnes\.cz/', galleryUrl).group(1)
@@ -52,7 +54,7 @@ class Rajce:
                 self.download_album(self.correct_url(album))
 
             if page > 0:
-                pageUrl = galleryUrl + '?listType=&sort=createDate&page=' + str(page)
+                pageUrl = galleryUrl + '?listType=&sort=' + sortType + '&page=' + str(page)
                 html = urllib.request.urlopen(pageUrl).read().decode('utf-8')
 
             page = page - 1
@@ -110,10 +112,12 @@ class Rajce:
         self.videoStorage = server + path
 
     def correct_url(self, url):
+        url = urllib.parse.quote_plus(url.replace("\"", ""), ':/&?=')
+
         if url[0:8] != 'https://' and url[0:7] != 'http://':
             url = 'https://' + url
 
-        if url[-1] != '/':
+        if url[-1] != '/' and url.find("?") == -1:
             url = url + '/'
 
         return url
