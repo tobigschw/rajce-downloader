@@ -21,6 +21,9 @@ new path will look like
 You can set only specific album
 
     rajce.py -u https://author.rajce.idnes.cz/albumName
+Or password protected album (don't forget quotes this time)
+
+    rajce.py -u "https://author.rajce.idnes.cz/albumName/?login=login&password=password"
 Or with destination folder
 
     rajce.py -u https://author.rajce.idnes.cz/albumName -p E:\Downloads\Rajce
