@@ -1,11 +1,13 @@
 import argparse
 import re
 import os
+import logging
+import json
 import urllib.request
 import urllib.error
 import urllib.parse
 import xml.etree.ElementTree as ET
-import time
+from pathlib import Path
 from multiprocessing.dummy import Pool
 
 
@@ -23,16 +25,71 @@ class Rajce:
         self.urls = urls
         self.path = path
 
+        self.setLogger()
+
+    def setLogger(self):
+        logging.basicConfig(
+            format='%(asctime)s %(levelname)-8s %(message)s',
+            datefmt='[%Y-%m-%d %H:%M:%S] :',
+            filename=Path('errors.log'),
+            filemode='a+',
+            level=logging.INFO
+        )
+
+        formatter = logging.Formatter(fmt='%(asctime)s %(levelname)-8s %(message)s', datefmt='[%Y-%m-%d %H:%M:%S] ')
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        console.setLevel(logging.INFO)
+
+        self.logger = logging.getLogger()
+        self.logger.addHandler(console)
+
+    def getMediaLinks(self, url) -> dict:
+        m = re.search('login=(.+)&password=(.+)', url)
+        data = {'login': m.group(1), 'code': m.group(2)} if m else {}
+
+        try:
+            data = urllib.parse.urlencode(data).encode()
+            request = urllib.request.Request(url, data=data)
+            response = urllib.request.urlopen(request).read().decode('utf-8')
+        except urllib.error.URLError as e:
+            self.logger.error(f'Error : "{e.reason}" for url : {url}')
+            return {}
+
+        m = re.search('var storage = \"(.+?)\"', response)
+        storage = m.group(1).replace("\\", "") if m else ''
+        if storage == '':
+            self.logger.error(f'Error : "Can\'t parse storage url path"')
+            return {}
+
+        photos = {}
+        for line in response.splitlines(True):
+            m = re.search('var photos = (.+);$', line.strip('\n\t\r '))
+            if not m: continue
+            photos = json.loads(m.group(1))
+            break
+
+        return {elem['fileName']: elem['videoStructure']['items'][1]['video'][0]['file']
+        if elem['videoStructure'] else storage + 'images/' + elem['fileName'] for elem in photos}
+
+    def getAlbumList(self, url) -> dict:
+        try:
+            body = urllib.request.urlopen(url + '?rss=news').read()
+        except urllib.error.URLError as e:
+            self.logger.error(f'Error : "{e.reason}" for url : {url}')
+            return {}
+
+        root = ET.fromstring(body)
+
+        return {x.find('title').text.split(' | ')[1] : x.find('link').text for x in root.findall('channel/item')}
+
     def download(self):
         for url in self.urls:
-            url = self.correct_url(url)
-            m = re.search('([\w-]+?)\.rajce\.idnes\.cz/((.*)|)', url)
-            if not m:
-                print(url + ' - Wrong url!')
-            elif m.group(2) == '':
-                self.download_gallery(url)
+            path = urllib.parse.urlparse(url).path
+            if len(path.strip('/')) > 0:
+                print('getMediaLinks - ' + url)
             else:
-                self.download_album(url)
+                print('getAlbumList - ' + url)
 
     def download_gallery(self, galleryUrl):
         html = urllib.request.urlopen(galleryUrl).read().decode('utf-8')
@@ -125,8 +182,9 @@ class Rajce:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-u', '--url', help="List of URLs", nargs='+', required = True)
+    parser.add_argument('-u', '--url', help="List of URLs", nargs='+', required=True)
     parser.add_argument('-p', '--path', help="Destination folder")
     args = parser.parse_args()
     downloader = Rajce(args.url, args.path)
+
     downloader.download()
