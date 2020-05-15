@@ -9,16 +9,14 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from multiprocessing.dummy import Pool
-# for reporthook
-import sys
-import time
-import datetime
-from time import gmtime, strftime
 
 
 class Rajce:
     urls = None
     path = None
+    useHistory = False
+
+    history = []
     videoStorage = None
     securityCode = None
     storage = None
@@ -27,12 +25,26 @@ class Rajce:
 
     THREADS_COUNT = 10
 
-    def __init__(self, urls, path=None):
-        self.urls = urls
-
-        self.path = Path(path) if path else Path(__file__).resolve().parent
-
+    def __init__(self, urls, path=None, archive=None):
         self.setLogger()
+
+        self.urls = urls
+        self.path = Path(path) if path else Path(__file__).resolve().parent
+        if archive:
+            self.useHistory = True
+            self.history = self.getHistory()
+
+    def getHistory(self) -> list:
+        list = []
+        try:
+            with open('history', 'r+') as f:
+                for line in f:
+                    currentPlace = line[:-1]
+                    list.append(currentPlace)
+        except:
+            pass
+
+        return list
 
     def setLogger(self):
         logging.basicConfig(
@@ -67,9 +79,9 @@ class Rajce:
         for line in response.splitlines(True):
             m = re.search('var (.+?) = (.+?);$', line.strip('\n\t\r '))
             if not m or m.group(1) in config: continue
-            config[m.group(1)] = m.group(2).strip('"').replace("\\","")
+            config[m.group(1)] = m.group(2).strip('"').replace("\\", "")
 
-        if not all(k in config for k in ('albumUserName','albumServerDir','storage')):
+        if not all(k in config for k in ('albumUserName', 'albumServerDir', 'storage')):
             self.logger.error(f'Error : Some config keys not found')
             return {}
 
@@ -119,11 +131,18 @@ class Rajce:
                 for album_url in album_urls:
                     self.links.update(self.getMediaLinks(album_url))
 
+        fileList = [x for x in self.links.keys() if
+                    self.links[x] not in self.history] if self.useHistory else self.links.keys()
+
+        self.logger.info(f'{len(fileList)} new files found')
+        if len(fileList) == 0: return
+
         self.logger.info('Start')
-        pool = Pool(self.THREADS_COUNT)
-        pool.map(self.downloadFile, self.links.keys())
-        pool.close()
-        pool.join()
+        p = Pool(self.THREADS_COUNT)
+        with open('history', 'a+') as f:
+            for url in p.imap(self.downloadFile, fileList):
+                if self.useHistory and url:
+                    f.write(f"{url}\n")
         self.logger.info('Finish')
 
     def downloadFile(self, file):
@@ -141,14 +160,15 @@ class Rajce:
             self.logger.error(f'URLError : "{e.reason}" for url : {url}')
             return False
 
-        return True
+        return url
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-u', '--url', help="List of URLs", nargs='+', required=True)
     parser.add_argument('-p', '--path', help="Destination folder")
+    parser.add_argument('-a', '--archive', help="Downloaded URLs archive", action='store_true')
     args = parser.parse_args()
-    downloader = Rajce(args.url, args.path)
+    downloader = Rajce(args.url, args.path, args.archive)
 
     downloader.download()
