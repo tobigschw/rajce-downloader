@@ -1,5 +1,6 @@
 import argparse
 import re
+import sys
 import logging
 import json
 import urllib.request
@@ -8,12 +9,13 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from multiprocessing.dummy import Pool
+from time import gmtime, strftime, sleep
 
 
 class Rajce:
-    #TODO Album download progressbar
     #TODO Count downloaded files in destination folder
     #TODO Detect ban for bruteforce
+    #TODO Analyse album for likes and comments
 
     urls = None
     path = None
@@ -79,10 +81,10 @@ class Rajce:
         return config
 
     def bruteForce(self, url) -> str:
-        self.logger.info(f'Try bruteforcing url "{url}"')
-
         url = urllib.request.urlopen(url).geturl()
         url = url.split('?')[0].strip('/')
+
+        self.logger.info(f'Try bruteforcing url "{url}"')
 
         nameList = [
             urllib.parse.urlsplit(url).netloc.split('.')[0],
@@ -199,6 +201,7 @@ class Rajce:
 
     def downloadAlbum(self, url):
         self.links = self.getMediaLinks(url)
+        if len(self.links) == 0: return
 
         fileList = [x for x in self.links.keys() if
                     self.links[x] not in self.history] if self.useHistory else self.links.keys()
@@ -206,13 +209,24 @@ class Rajce:
         self.logger.info(f'{len(fileList)} new files found')
         if len(fileList) == 0: return
 
-        self.logger.info('Start')
+        self.logger.info('Begin downloading')
+        ttl = len(fileList)
+        dld = 0
+        barLen = 50
+        timestamp = strftime("%Y-%m-%d %H:%M:%S", gmtime())
+
         p = Pool(self.THREADS_COUNT)
         with open(self.root.joinpath('history'), 'a+') as f:
             for url in p.imap(self.downloadFile, fileList):
+                if url:
+                    dld += 1
+                    block = int(barLen * dld / ttl)
+                    sys.stdout.write(f"\r[{timestamp}] [{dld}/{ttl}] [{'#'*block}{'-'*(barLen-block)}]")
+                    sys.stdout.flush()
                 if self.useHistory and url:
                     f.write(f"{url}\n")
-        self.logger.info('Finish')
+        print("\r")
+        self.logger.info('Finish downloading')
 
 
 if __name__ == '__main__':
@@ -220,8 +234,7 @@ if __name__ == '__main__':
     parser.add_argument('-u', '--url', help="List of URLs", nargs='+', required=True)
     parser.add_argument('-p', '--path', help="Destination folder")
     parser.add_argument('-a', '--archive', help="Downloaded URLs archive", action='store_true')
-    parser.add_argument('-b', '--bruteforce', help="Use brute force", action='store_true')
+    parser.add_argument('-b', '--bruteforce', help="Use bruteforce", action='store_true')
     args = parser.parse_args()
-    downloader = Rajce(args.url, args.path, args.archive, args.bruteforce)
-
-    downloader.download()
+    
+    Rajce(args.url, args.path, args.archive, args.bruteforce).download()
