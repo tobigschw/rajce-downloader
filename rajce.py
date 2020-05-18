@@ -6,17 +6,12 @@ import json
 import urllib.request
 import urllib.error
 import urllib.parse
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from multiprocessing.dummy import Pool
-from time import gmtime, strftime, sleep
+from time import gmtime, strftime
 
 
 class Rajce:
-    #TODO Count downloaded files in destination folder
-    #TODO Detect ban for bruteforce
-    #TODO Analyse album for likes and comments
-
     urls = None
     path = None
     useHistory = False
@@ -76,7 +71,7 @@ class Rajce:
         for line in response.splitlines(True):
             m = re.search('var (.+?) = (.+?);$', line.strip('\n\t\r '))
             if not m or m.group(1) in config: continue
-            config[m.group(1)] = m.group(2).strip('"').replace("\\", "")
+            config[m.group(1)] = m.group(2)
 
         return config
 
@@ -111,9 +106,7 @@ class Rajce:
         return ''
 
     def getUrl(self, url) -> str:
-        m = re.search('login=(.+)&password=(.+)', url)
-        data = {'login': m.group(1), 'code': m.group(2)} if m else {}
-
+        data = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
         data = urllib.parse.urlencode(data).encode()
         request = urllib.request.Request(url, data=data)
 
@@ -161,30 +154,73 @@ class Rajce:
 
         return links_dict
 
-    def getAlbumsList(self, url) -> list:
+    def getMediaRatings(self, url) -> tuple:
         try:
-            body = urllib.request.urlopen(url.strip('/') + '/?rss=news').read()
+            urlopen = urllib.request.urlopen(url)
+            url = urlopen.geturl()
+            response = urlopen.read().decode('utf-8')
         except urllib.error.URLError as e:
             self.logger.error(f'Error : "{e.reason}" for url : {url}')
-            return []
+            return {}, {}
+        config = self.getAlbumConfig(response)
 
-        root = ET.fromstring(body)
+        if 'photos' not in config and self.useBruteForce:
+            response = self.bruteForce(url)
+            config = self.getAlbumConfig(response) if len(response) > 0 else config
 
-        return [x.text for x in root.findall('channel/item/link')]
+        # Parse user, album, storage
+        if not all(k in config for k in ('albumUserName', 'albumServerDir', 'storage')):
+            self.logger.error(f'Error : Config keys not found')
+            return {}, {}
+        user, album, storage = config['albumUserName'], config['albumServerDir'], config['storage']
 
-    def download(self):
-        for url in self.urls:
-            path = urllib.parse.urlparse(url).path
-            if len(path.strip('/')) > 0:
-                self.downloadAlbum(url)
-            else:
-                album_urls = self.getAlbumsList(url)
-                for album_url in album_urls:
-                    self.downloadAlbum(album_url)
+        # Parse photos array
+        if 'photos' not in config:
+            self.logger.error(f'Error : {user}\'s album "{album}" is empty or password protected')
+            return {}, {}
+        photos = json.loads(config['photos'].encode('utf-8'))
+
+        links_dict = {url.strip('/') + '/' + elem['photoID']: int(elem['rating']) for elem in photos}
+
+        # Create album folder
+        if len(links_dict) > 0:
+            self.logger.info(f"{len(links_dict)} media files found in {user}'s album '{album}'")
+        else:
+            self.logger.info(f"No media files found in {user}'s album '{album}'")
+
+        config['albumRating'] = int(config['albumRating'])
+        return {url: config['albumRating']}, links_dict
+
+    def getAlbumsList(self, url) -> list:
+        url = urllib.parse.urljoin(url, 'services/web/get-albums.json')
+        offset = 1
+        limit = 50
+        albums = []
+
+        while True:
+            data = {'offset' : offset - 1, 'limit' : limit}
+
+            data = urllib.parse.urlencode(data).encode()
+            request = urllib.request.Request(url, data=data)
+            try:
+                content = urllib.request.urlopen(request).read().decode('utf-8')
+            except urllib.error.URLError as e:
+                self.logger.error(f'Error : "{e.reason}" for url : {url}')
+                break
+
+            content = json.loads(content)
+
+            if len(content['result']['data']) == 0:
+                break
+
+            albums += [x['permalink'] for x in content['result']['data']]
+
+            offset += limit
+
+        return albums
 
     def downloadFile(self, file):
         url = self.links[file]
-        # print(f'Downloading "{url}"')
         try:
             urllib.request.urlretrieve(url, file)
         except urllib.error.HTTPError as e:
@@ -228,6 +264,43 @@ class Rajce:
         print("\r")
         self.logger.info('Finish downloading')
 
+    def isAlbum(self, url):
+        return len(urllib.parse.urlparse(url).path.strip('/')) > 0
+
+    def download(self):
+        for url in self.urls:
+            if self.isAlbum(url):
+                self.downloadAlbum(url)
+            else:
+                albumUrls = self.getAlbumsList(url)
+                for albumUrl in albumUrls:
+                    self.downloadAlbum(albumUrl)
+
+    def analyze(self, albumCount = 10, mediaCount = 50):
+        albums = {}
+        media = {}
+        for url in self.urls:
+            if self.isAlbum(url):
+                ta, tm = self.getMediaRatings(url)
+                albums.update(ta)
+                media.update(tm)
+            else:
+                albumUrls = self.getAlbumsList(url)
+                for albumUrl in albumUrls:
+                    ta, tm = self.getMediaRatings(albumUrl)
+                    albums.update(ta)
+                    media.update(tm)
+
+        print(f'Album\'s top {albumCount}')
+
+        for url, rating in sorted(albums.items(), reverse=True, key=lambda item: item[1])[:albumCount]:
+            print(rating , url)
+
+        print(f'Photos and videos top {mediaCount}')
+
+        for url, rating in sorted(media.items(), reverse=True, key=lambda item: item[1])[:mediaCount]:
+            print(rating , url)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -235,6 +308,8 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--path', help="Destination folder")
     parser.add_argument('-a', '--archive', help="Downloaded URLs archive", action='store_true')
     parser.add_argument('-b', '--bruteforce', help="Use bruteforce", action='store_true')
+    parser.add_argument('-i', '--info', help="Analyze URL", action='store_true')
     args = parser.parse_args()
-    
-    Rajce(args.url, args.path, args.archive, args.bruteforce).download()
+
+    if args.info: Rajce(args.url, args.path, args.archive, args.bruteforce).analyze(10,50)
+    else: Rajce(args.url, args.path, args.archive, args.bruteforce).download()
