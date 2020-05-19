@@ -27,12 +27,12 @@ class Rajce:
 
     THREADS_COUNT = 10
 
-    def __init__(self, urls, path=None, archive=None, bruteforce=None):
+    def __init__(self, urls, path=None, archive=None, bruteForce=None):
         self.setLogger()
 
         self.urls = urls
         self.path = Path(path) if path else self.root
-        self.useBruteForce = bruteforce
+        self.useBruteForce = bruteForce
         if archive:
             self.useHistory = True
             self.history = self.getHistory()
@@ -66,20 +66,19 @@ class Rajce:
         self.logger = logging.getLogger()
         self.logger.addHandler(console)
 
-    def getAlbumConfig(self, response) -> dict:
-        config = {}
-        for line in response.splitlines(True):
-            m = re.search('var (.+?) = (.+?);$', line.strip('\n\t\r '))
-            if not m or m.group(1) in config: continue
-            config[m.group(1)] = m.group(2)
+    def isAlbum(self, url):
+        return len(urllib.parse.urlparse(url).path.strip('/')) > 0
 
-        return config
+    def getBruteForceList(self, url) -> list:
+        urlList = []
 
-    def bruteForce(self, url) -> str:
-        url = urllib.request.urlopen(url).geturl()
+        try:
+            url = urllib.request.urlopen(url).geturl()
+        except urllib.error.URLError as e:
+            self.logger.error(f'Error while getting brute force list: "{e.reason}" for url : {url}')
+            return []
+
         url = url.split('?')[0].strip('/')
-
-        self.logger.info(f'Try bruteforcing url "{url}"')
 
         nameList = [
             urllib.parse.urlsplit(url).netloc.split('.')[0],
@@ -92,18 +91,45 @@ class Rajce:
 
         for login in nameList:
             for password in pwrdList:
-                try:
-                    response = self.getUrl(url + f'/?login={login}&password={password}')
-                except urllib.error.URLError as e:
-                    self.logger.error(f'Bruteforce error : "{e.reason}" for url : {url}')
-                    continue
+                urlList.append(url + f'/?login={login}&password={password}')
 
-                config = self.getAlbumConfig(response)
-                if 'photos' in config:
-                    self.logger.info(f'Bruteforce success with {login}:{password}')
-                    return response
+        return urlList
 
-        return ''
+    def getConfig(self, url, bruteForce = False) -> dict:
+        config = {}
+
+        try:
+            data = dict(
+                urllib.parse.parse_qsl(
+                    urllib.parse.urlsplit(url).query
+                )
+            )
+            data = urllib.parse.urlencode(data).encode()
+            request = urllib.request.Request(url, data=data)
+            response = urllib.request.urlopen(request)
+        except urllib.error.URLError as e:
+            self.logger.error(f'Error : "{e.reason}" for url : {url}')
+            return {}
+
+        for line in response.readlines():
+            m = re.search('var (.+?) = (.+?);$', line.decode('utf-8').strip('\n\t\r '))
+            if not m or m.group(1) in config: continue
+            config[m.group(1)] = m.group(2)
+
+        for key in ['photos', 'albumName', 'storage', 'settings', 'albumRating']:
+            if key in config: config[key] = json.loads(config[key])
+
+        for key in config:
+            if isinstance(config[key], str):
+                config[key] = config[key].strip('"')
+
+        if 'photos' not in config and bruteForce:
+            urls = self.getBruteForceList(url)
+            for url in urls:
+                config = self.getConfig(url, False)
+                if 'photos' in config: break
+
+        return config
 
     def getUrl(self, url) -> str:
         data = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
@@ -112,84 +138,24 @@ class Rajce:
 
         return urllib.request.urlopen(request).read().decode('utf-8')
 
-    def getMediaLinks(self, url) -> dict:
-        try:
-            response = self.getUrl(url)
-        except urllib.error.URLError as e:
-            self.logger.error(f'Error : "{e.reason}" for url : {url}')
-            return {}
-        config = self.getAlbumConfig(response)
-
-        if 'photos' not in config and self.useBruteForce:
-            response = self.bruteForce(url)
-            config = self.getAlbumConfig(response) if len(response) > 0 else config
+    def getMediaList(self, config) -> list:
+        if 'photos' not in config:
+            self.logger.error(f'Error : Album is empty or password protected')
+            return []
 
         # Parse user, album, storage
         if not all(k in config for k in ('albumUserName', 'albumServerDir', 'storage')):
             self.logger.error(f'Error : Config keys not found')
-            return {}
-        user, album, storage = config['albumUserName'], config['albumServerDir'], config['storage']
+            return []
 
-        # Parse photos array
-        if 'photos' not in config:
-            self.logger.error(f'Error : {user}\'s album "{album}" is empty or password protected')
-            return {}
-        photos = json.loads(config['photos'])
+        photos = config['photos']
 
-        links_dict = {
-            self.path.joinpath(user, album, elem['info'].split(' | ')[0]): elem['videoStructure']['items'][1]['video'][0]['file']
-            if elem['videoStructure'] else storage + 'images/' + elem['fileName'] for elem in photos
-        }
+        for elem in photos:
+            elem['albumUserName'] = config['albumUserName'].strip('"')
+            elem['albumServerDir'] = config['albumServerDir'].strip('"')
+            elem['storage'] = config['storage']
 
-        # Create album folder
-        if len(links_dict) > 0:
-            try:
-                self.path.joinpath(user, album).mkdir(parents=True, exist_ok=True)
-            except OSError as e:
-                self.logger.error(f'Error "{e}" for mkdir "{user}/{album}"')
-                return {}
-            self.logger.info(f"{len(links_dict)} media files found in {user}'s album '{album}'")
-        else:
-            self.logger.info(f"No media files found in {user}'s album '{album}'")
-
-        return links_dict
-
-    def getMediaRatings(self, url) -> tuple:
-        try:
-            urlopen = urllib.request.urlopen(url)
-            url = urlopen.geturl()
-            response = urlopen.read().decode('utf-8')
-        except urllib.error.URLError as e:
-            self.logger.error(f'Error : "{e.reason}" for url : {url}')
-            return {}, {}
-        config = self.getAlbumConfig(response)
-
-        if 'photos' not in config and self.useBruteForce:
-            response = self.bruteForce(url)
-            config = self.getAlbumConfig(response) if len(response) > 0 else config
-
-        # Parse user, album, storage
-        if not all(k in config for k in ('albumUserName', 'albumServerDir', 'storage')):
-            self.logger.error(f'Error : Config keys not found')
-            return {}, {}
-        user, album, storage = config['albumUserName'], config['albumServerDir'], config['storage']
-
-        # Parse photos array
-        if 'photos' not in config:
-            self.logger.error(f'Error : {user}\'s album "{album}" is empty or password protected')
-            return {}, {}
-        photos = json.loads(config['photos'].encode('utf-8'))
-
-        links_dict = {url.strip('/') + '/' + elem['photoID']: int(elem['rating']) for elem in photos}
-
-        # Create album folder
-        if len(links_dict) > 0:
-            self.logger.info(f"{len(links_dict)} media files found in {user}'s album '{album}'")
-        else:
-            self.logger.info(f"No media files found in {user}'s album '{album}'")
-
-        config['albumRating'] = int(config['albumRating'])
-        return {url: config['albumRating']}, links_dict
+        return photos
 
     def getAlbumsList(self, url) -> list:
         url = urllib.parse.urljoin(url, 'services/web/get-albums.json')
@@ -198,7 +164,7 @@ class Rajce:
         albums = []
 
         while True:
-            data = {'offset' : offset - 1, 'limit' : limit}
+            data = {'offset': offset - 1, 'limit': limit}
 
             data = urllib.parse.urlencode(data).encode()
             request = urllib.request.Request(url, data=data)
@@ -219,8 +185,14 @@ class Rajce:
 
         return albums
 
-    def downloadFile(self, file):
-        url = self.links[file]
+    def downloadFile(self, media):
+        if media['videoStructure']:
+            url = media['videoStructure']['items'][1]['video'][0]['file']
+        else:
+            url = media['storage'] + 'images/' + media['fileName']
+
+        file = self.path.joinpath(media['albumUserName'], media['albumServerDir'], media['info'].split(' | ')[0])
+
         try:
             urllib.request.urlretrieve(url, file)
         except urllib.error.HTTPError as e:
@@ -236,14 +208,21 @@ class Rajce:
         return url
 
     def downloadAlbum(self, url):
-        self.links = self.getMediaLinks(url)
-        if len(self.links) == 0: return
+        config = self.getConfig(url, self.useBruteForce)
+        links = self.getMediaList(config)
 
-        fileList = [x for x in self.links.keys() if
-                    self.links[x] not in self.history] if self.useHistory else self.links.keys()
+        if len(links) == 0: return
 
-        self.logger.info(f'{len(fileList)} new files found')
+        fileList = [x for x in links if x['photoID'] not in self.history] if self.useHistory else links
+
         if len(fileList) == 0: return
+
+        user, album = config['albumUserName'], config['albumServerDir']
+        try:
+            self.path.joinpath(user, album).mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            self.logger.error(f'Error "{e}" when mkdir "{user}/{album}"')
+            return
 
         self.logger.info('Begin downloading')
         ttl = len(fileList)
@@ -257,15 +236,12 @@ class Rajce:
                 if url:
                     dld += 1
                     block = int(barLen * dld / ttl)
-                    sys.stdout.write(f"\r[{timestamp}] [{dld}/{ttl}] [{'#'*block}{'-'*(barLen-block)}]")
+                    sys.stdout.write(f"\r[{timestamp}] [{dld}/{ttl}] [{'#' * block}{'-' * (barLen - block)}]")
                     sys.stdout.flush()
                 if self.useHistory and url:
                     f.write(f"{url}\n")
         print("\r")
         self.logger.info('Finish downloading')
-
-    def isAlbum(self, url):
-        return len(urllib.parse.urlparse(url).path.strip('/')) > 0
 
     def download(self):
         for url in self.urls:
@@ -276,30 +252,35 @@ class Rajce:
                 for albumUrl in albumUrls:
                     self.downloadAlbum(albumUrl)
 
-    def analyze(self, albumCount = 10, mediaCount = 50):
-        albums = {}
-        media = {}
+    def analyze(self, albumCount=10, mediaCount=50):
+        albums = []
+        media = []
+
         for url in self.urls:
             if self.isAlbum(url):
-                ta, tm = self.getMediaRatings(url)
-                albums.update(ta)
-                media.update(tm)
+                config = self.getConfig(url, self.useBruteForce)
+                links = self.getMediaList(config)
+
+                albums += [config]
+                media += links
             else:
                 albumUrls = self.getAlbumsList(url)
                 for albumUrl in albumUrls:
-                    ta, tm = self.getMediaRatings(albumUrl)
-                    albums.update(ta)
-                    media.update(tm)
+                    config = self.getConfig(albumUrl, self.useBruteForce)
+                    links = self.getMediaList(config)
+
+                    albums += [config]
+                    media += links
+
+        albums = [x for x in albums if 'albumRating' in x]
 
         print(f'Album\'s top {albumCount}')
-
-        for url, rating in sorted(albums.items(), reverse=True, key=lambda item: item[1])[:albumCount]:
-            print(rating , url)
+        for elem in sorted(albums, reverse=True, key=lambda item: item['albumRating'])[:albumCount]:
+            print(elem['albumRating'], elem['settings']['base_short_url'] + '/a' + elem['albumID'])
 
         print(f'Photos and videos top {mediaCount}')
-
-        for url, rating in sorted(media.items(), reverse=True, key=lambda item: item[1])[:mediaCount]:
-            print(rating , url)
+        for elem in sorted(media, reverse=True, key=lambda item: item['rating'])[:mediaCount]:
+            print(elem['rating'], 'https://'+elem['albumUserName']+'.rajce.idnes.cz/'+elem['albumServerDir']+'/'+elem['photoID'])
 
 
 if __name__ == '__main__':
@@ -311,5 +292,9 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--info', help="Analyze URL", action='store_true')
     args = parser.parse_args()
 
-    if args.info: Rajce(args.url, args.path, args.archive, args.bruteforce).analyze(10,50)
-    else: Rajce(args.url, args.path, args.archive, args.bruteforce).download()
+    rajce = Rajce(args.url, args.path, args.archive, args.bruteforce)
+    if args.info:
+        rajce.analyze(10,50)
+    else:
+        rajce.download()
+
