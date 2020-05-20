@@ -205,26 +205,32 @@ class Rajce:
             self.logger.error(f'URLError : "{e.reason}" for url : {url}')
             return False
 
-        return url
+        return media['photoID']
 
     def downloadAlbum(self, url):
         config = self.getConfig(url, self.useBruteForce)
         links = self.getMediaList(config)
 
-        if len(links) == 0: return
+        user, album = config['albumUserName'], config['albumServerDir']
+        self.logger.info(f'Checking {user}\'s album "{album}"')
+
+        if len(links) == 0:
+            self.logger.info(f'No photos found')
+            return
 
         fileList = [x for x in links if x['photoID'] not in self.history] if self.useHistory else links
 
-        if len(fileList) == 0: return
+        if len(fileList) == 0:
+            self.logger.info(f'No new photos found')
+            return
 
-        user, album = config['albumUserName'], config['albumServerDir']
+        self.logger.info(f'{len(fileList)} new photo{("s" if len(fileList) > 1 else "")} found')
         try:
             self.path.joinpath(user, album).mkdir(parents=True, exist_ok=True)
         except OSError as e:
             self.logger.error(f'Error "{e}" when mkdir "{user}/{album}"')
             return
 
-        self.logger.info('Begin downloading')
         ttl = len(fileList)
         dld = 0
         barLen = 50
@@ -232,45 +238,44 @@ class Rajce:
 
         p = Pool(self.THREADS_COUNT)
         with open(self.root.joinpath('history'), 'a+') as f:
-            for url in p.imap(self.downloadFile, fileList):
-                if url:
+            for photoId in p.imap(self.downloadFile, fileList):
+                if photoId:
                     dld += 1
                     block = int(barLen * dld / ttl)
                     sys.stdout.write(f"\r[{timestamp}] [{dld}/{ttl}] [{'#' * block}{'-' * (barLen - block)}]")
                     sys.stdout.flush()
-                if self.useHistory and url:
-                    f.write(f"{url}\n")
+                if self.useHistory and photoId:
+                    f.write(f"{photoId}\n")
         print("\r")
-        self.logger.info('Finish downloading')
 
     def download(self):
+        urls = []
+
         for url in self.urls:
-            if self.isAlbum(url):
-                self.downloadAlbum(url)
-            else:
-                albumUrls = self.getAlbumsList(url)
-                for albumUrl in albumUrls:
-                    self.downloadAlbum(albumUrl)
+            urls += [url] if self.isAlbum(url) else self.getAlbumsList(url)
+
+        for url in urls:
+            self.downloadAlbum(url)
+
+        self.logger.info('Done!')
 
     def analyze(self, albumCount=10, mediaCount=50):
         albums = []
         media = []
+        urls = []
 
         for url in self.urls:
-            if self.isAlbum(url):
-                config = self.getConfig(url, self.useBruteForce)
-                links = self.getMediaList(config)
+            urls += [url] if self.isAlbum(url) else self.getAlbumsList(url)
 
-                albums += [config]
-                media += links
-            else:
-                albumUrls = self.getAlbumsList(url)
-                for albumUrl in albumUrls:
-                    config = self.getConfig(albumUrl, self.useBruteForce)
-                    links = self.getMediaList(config)
+        for url in urls:
+            config = self.getConfig(url, self.useBruteForce)
+            links = self.getMediaList(config)
 
-                    albums += [config]
-                    media += links
+            user, album = config['albumUserName'], config['albumServerDir']
+            self.logger.info(f'Analyze {user}\'s album "{album}"')
+
+            albums += [config]
+            media += links
 
         albums = [x for x in albums if 'albumRating' in x]
 
@@ -278,7 +283,7 @@ class Rajce:
         for elem in sorted(albums, reverse=True, key=lambda item: item['albumRating'])[:albumCount]:
             print(elem['albumRating'], elem['settings']['base_short_url'] + '/a' + elem['albumID'])
 
-        print(f'Photos and videos top {mediaCount}')
+        print(f'Photos top {mediaCount}')
         for elem in sorted(media, reverse=True, key=lambda item: item['rating'])[:mediaCount]:
             print(elem['rating'], 'https://'+elem['albumUserName']+'.rajce.idnes.cz/'+elem['albumServerDir']+'/'+elem['photoID'])
 
