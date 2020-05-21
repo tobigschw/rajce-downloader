@@ -95,7 +95,7 @@ class Rajce:
 
         return urlList
 
-    def getConfig(self, url, bruteForce = False) -> dict:
+    def getConfig(self, url, bruteForce=False) -> dict:
         config = {}
 
         try:
@@ -124,6 +124,7 @@ class Rajce:
                 config[key] = config[key].strip('"')
 
         if 'photos' not in config and bruteForce:
+            self.logger.info(f'Trying to bruteforce "{url}"')
             urls = self.getBruteForceList(url)
             for url in urls:
                 config = self.getConfig(url, False)
@@ -281,25 +282,26 @@ class Rajce:
 
         print(f'Album\'s top {albumCount}')
         for elem in sorted(albums, reverse=True, key=lambda item: item['albumRating'])[:albumCount]:
-            print(elem['albumRating'], elem['settings']['base_short_url'] + '/a' + elem['albumID'])
+            album = 'https://' + elem['albumUserName'] + '.rajce.idnes.cz/' + elem['albumServerDir']
+            print(elem['albumRating'], album)
 
         print(f'Photos top {mediaCount}')
         for elem in sorted(media, reverse=True, key=lambda item: item['rating'])[:mediaCount]:
-            print(elem['rating'], 'https://'+elem['albumUserName']+'.rajce.idnes.cz/'+elem['albumServerDir']+'/'+elem['photoID'])
+            album = 'https://' + elem['albumUserName'] + '.rajce.idnes.cz/' + elem['albumServerDir']
+            print(elem['rating'], album + '/' + elem['photoID'])
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-u', '--url', help="List of URLs", nargs='+', required=True)
     parser.add_argument('-p', '--path', help="Destination folder")
-    parser.add_argument('-a', '--archive', help="Downloaded URLs archive", action='store_true')
-    parser.add_argument('-b', '--bruteforce', help="Use bruteforce", action='store_true')
-    parser.add_argument('-i', '--info', help="Analyze URL", action='store_true')
+    parser.add_argument('-ht', '--history', help="Downloaded URLs log", action='store_true')
+    parser.add_argument('-b', '--bruteforce', help="Use bruteForce", action='store_true')
+    parser.add_argument('-a', '--analyze', help="Analyze URL", action='store_true')
     args = parser.parse_args()
 
-    rajce = Rajce(args.url, args.path, args.archive, args.bruteforce)
-    if args.info:
-        rajce.analyze(10,50)
+    rajce = Rajce(args.url, args.path, args.history, args.bruteforce)
+    if args.analyze:
+        rajce.analyze(10, 50)
     else:
         rajce.download()
-
