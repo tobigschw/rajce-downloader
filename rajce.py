@@ -280,15 +280,17 @@ class Rajce:
 
         albums = [x for x in albums if 'albumRating' in x]
 
-        print(f'Album\'s top {albumCount}')
-        for elem in sorted(albums, reverse=True, key=lambda item: item['albumRating'])[:albumCount]:
-            album = 'https://' + elem['albumUserName'] + '.rajce.idnes.cz/' + elem['albumServerDir']
-            print(elem['albumRating'], album)
+        if albumCount > 0:
+            print(f'Album\'s top {albumCount}')
+            for elem in sorted(albums, reverse=True, key=lambda item: item['albumRating'])[:albumCount]:
+                album = 'https://' + elem['albumUserName'] + '.rajce.idnes.cz/' + elem['albumServerDir']
+                print(elem['albumRating'], album)
 
-        print(f'Photos top {mediaCount}')
-        for elem in sorted(media, reverse=True, key=lambda item: item['rating'])[:mediaCount]:
-            album = 'https://' + elem['albumUserName'] + '.rajce.idnes.cz/' + elem['albumServerDir']
-            print(elem['rating'], album + '/' + elem['photoID'])
+        if mediaCount > 0:
+            print(f'Photos top {mediaCount}')
+            for elem in sorted(media, reverse=True, key=lambda item: item['rating'])[:mediaCount]:
+                album = 'https://' + elem['albumUserName'] + '.rajce.idnes.cz/' + elem['albumServerDir']
+                print(elem['rating'], album + '/' + elem['photoID'])
 
 
 if __name__ == '__main__':
@@ -297,11 +299,13 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--path', help="Destination folder")
     parser.add_argument('-ht', '--history', help="Downloaded URLs log", action='store_true')
     parser.add_argument('-b', '--bruteforce', help="Use bruteForce", action='store_true')
-    parser.add_argument('-a', '--analyze', help="Analyze URL", action='store_true')
+    parser.add_argument('-a', '--analyze', help="Analyze URL", nargs='*')
     args = parser.parse_args()
 
     rajce = Rajce(args.url, args.path, args.history, args.bruteforce)
-    if args.analyze:
-        rajce.analyze(10, 50)
+    if args.analyze != None:
+        a_top = int(args.analyze[0]) if len(args.analyze) > 0 else 10
+        i_top = int(args.analyze[1]) if len(args.analyze) > 1 else 50
+        rajce.analyze(a_top, i_top)
     else:
         rajce.download()
