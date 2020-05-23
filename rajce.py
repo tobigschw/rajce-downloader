@@ -75,7 +75,7 @@ class Rajce:
         try:
             url = urllib.request.urlopen(url).geturl()
         except urllib.error.URLError as e:
-            self.logger.error(f'Error while getting brute force list: "{e.reason}" for url : {url}')
+            self.logger.error(f'Error while getting list for brute force: "{e.reason}" for url : {url}')
             return []
 
         url = url.split('?')[0].strip('/')
@@ -295,11 +295,15 @@ class Rajce:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-u', '--url', help="List of URLs", nargs='+', required=True)
+    parser.add_argument('-u', '--url', help="URLs to download or to analyze", nargs='+', required=True)
     parser.add_argument('-p', '--path', help="Destination folder")
-    parser.add_argument('-ht', '--history', help="Downloaded URLs log", action='store_true')
-    parser.add_argument('-b', '--bruteforce', help="Use bruteForce", action='store_true')
-    parser.add_argument('-a', '--analyze', help="Analyze URL", nargs='*')
+    parser.add_argument('-H', '--history',
+                        help="Download only videos not listed in the history file. Record the IDs of all downloaded photos and videos in it",
+                        action='store_true')
+    parser.add_argument('-b', '--bruteforce', help="Use brute force", action='store_true')
+    parser.add_argument('-a', '--analyze',
+                        help="Analyze URLs. Show Top10 albums and Top50 photos based on rating. You can change Top sizes.",
+                        nargs='*')
     args = parser.parse_args()
 
     rajce = Rajce(args.url, args.path, args.history, args.bruteforce)
