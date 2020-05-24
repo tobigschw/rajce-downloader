@@ -1,37 +1,39 @@
-# Rajce Downloader
-Command line script for download albums with photos and videos from rajce.idnes.cz. 
-Will create a folder named after author and subfolder named after album for this. For example, for url 
+# Rajce Downloader and Analyzer
+Command-line program to download photos and videos from rajce.idnes.cz. 
+```
+rajce.py [OPTIONS] -u URL [URL ...]
+```
 
-    https://author.rajce.idnes.cz/albumName
-new path will look like
+## Options
+    -h, --help                                        Show this help message and exit
+    -u, --url URL [URL ...]                           URLs to download or to analyze
+    -p, --path PATH                                   Destination folder
+    -b, --bruteforce                                  Use brute force            
+    -H, --history                                     Download only videos not listed in the
+                                                      history file. Record the IDs of all
+                                                      downloaded photos and videos in it
+    -a, --analyze [ALBUM_TOP_SIZE, [MEDIA_TOP_SIZE]]  Analyze URLs and show, by default, top10
+                                                      albums and Top50 photos based on rating. 
+                                                      You can change Top sizes.    
+    
+## How to use
+    
+#### Allowed URLs for `--url` option. 
+Quotes are required when URL has album credentials.
+```
+https://userName.rajce.idnes.cz
+https://userName.rajce.idnes.cz/albumName
+"https://username.rajce.idnes.cz/albumName/?login=login&code=password"
+```
 
-    D:\Destination Folder\author\albumName
+#### Using `--analyze` flag.  
+By default, `ALBUM_TOP_SIZE` = 10 and `MEDIA_TOP_SIZE` = 50.  
+So, `-a` is the same as `-a 10 50`.  
+Show albums Top3 and photos Top10 - `-a 3 10`.  
+Show only photos Top13 - `-a 0 13`  
+```
+NOTE! When you use --analyze flag script will not download files
+```
 
 ## Requirements
 * [Python 3.6.1+](https://www.python.org/downloads)
-
-## Options
-    -h, --help                            Show this help message and exit
-    -u URL [URL ...], --url URL [URL ...] List of URLs
-    -p PATH, --path PATH                  Destination folder
-    
-## Examples
-    rajce.py -u URL [URL ...] [-p PATH]
-
-You can set only specific album
-
-    rajce.py -u https://author.rajce.idnes.cz/albumName
-Or password protected album (don't forget quotes this time)
-
-    rajce.py -u "https://author.rajce.idnes.cz/albumName/?login=login&password=password"
-Or with destination folder
-
-    rajce.py -u https://author.rajce.idnes.cz/albumName -p E:\Downloads\Rajce
-Or download all albums of one author
-
-    rajce.py -u https://author.rajce.idnes.cz/
-Or all albums of few authors separeted by space
-
-    rajce.py -u https://authorOne.rajce.idnes.cz/ https://authorTwo.rajce.idnes.cz/
-    
-Or all albums of one author and only one album of other and set destination folder. You get the idea, i think.
