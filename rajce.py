@@ -121,7 +121,7 @@ class Rajce:
 
         for key in config:
             if isinstance(config[key], str):
-                config[key] = config[key].strip('"')
+                config[key] = config[key].strip('".')
 
         if 'photos' not in config and bruteForce:
             self.logger.info(f'Trying to bruteforce "{url}"')
