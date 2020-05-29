@@ -30,7 +30,7 @@ class Rajce:
     def __init__(self, urls, path=None, archive=None, bruteForce=None):
         self.setLogger()
 
-        self.urls = urls
+        self.urls = [self.userNameToUrl(x) for x in urls]
         self.path = Path(path) if path else self.root
         self.useBruteForce = bruteForce
         if archive:
@@ -66,8 +66,11 @@ class Rajce:
         self.logger = logging.getLogger()
         self.logger.addHandler(console)
 
-    def isAlbum(self, url):
+    def isAlbum(self, url) -> bool:
         return len(urllib.parse.urlparse(url).path.strip('/')) > 0
+
+    def userNameToUrl(self, userName) -> str:
+        return userName if re.search('rajce\.idnes\.cz', userName) else 'https://' + userName + '.rajce.idnes.cz/'
 
     def getBruteForceList(self, url) -> list:
         urlList = []
