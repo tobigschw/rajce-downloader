@@ -124,7 +124,7 @@ class Rajce:
 
         for key in config:
             if isinstance(config[key], str):
-                config[key] = config[key].strip('".')
+                config[key] = config[key].strip('"')
 
         if 'photos' not in config and bruteForce:
             self.logger.info(f'Trying to bruteforce "{url}"')
@@ -195,7 +195,11 @@ class Rajce:
         else:
             url = media['storage'] + 'images/' + media['fileName']
 
-        file = self.path.joinpath(media['albumUserName'], media['albumServerDir'], media['info'].split(' | ')[0])
+        file = self.path.joinpath(
+            media['albumUserName'],
+            media['albumServerDir'].strip('.'),
+            media['info'].split(' | ')[0]
+        )
 
         try:
             urllib.request.urlretrieve(url, file)
