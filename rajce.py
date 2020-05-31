@@ -262,6 +262,10 @@ class Rajce:
         for url in self.urls:
             urls += [url] if self.isAlbum(url) else self.getAlbumsList(url)
 
+        if len(urls) == 0:
+            self.logger.info('No albums found. Albums probably hidden')
+            return
+
         for url in urls:
             self.downloadAlbum(url)
 
@@ -274,6 +278,10 @@ class Rajce:
 
         for url in self.urls:
             urls += [url] if self.isAlbum(url) else self.getAlbumsList(url)
+
+        if len(urls) == 0:
+            self.logger.info('No albums found. Albums probably hidden')
+            return
 
         for url in urls:
             config = self.getConfig(url, self.useBruteForce)
