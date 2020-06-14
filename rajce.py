@@ -135,13 +135,6 @@ class Rajce:
 
         return config
 
-    def getUrl(self, url) -> str:
-        data = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
-        data = urllib.parse.urlencode(data).encode()
-        request = urllib.request.Request(url, data=data)
-
-        return urllib.request.urlopen(request).read().decode('utf-8')
-
     def getMediaList(self, config) -> list:
         if 'photos' not in config:
             self.logger.error(f'Error : Album is empty or password protected')
